@@ -13,13 +13,18 @@
 #include <math.h>
 #include <unistd.h>
 #include <signal.h>
-
+/*
+extern int writerSetBuffer(int shareID, char** buffer);
+extern int readerGetBuffer(int shareID, char** buffer);
+extern unsigned int writeBuffer(char* circleBuff, char* data,unsigned int length);
+extern int readBuffer(char* circleBuff, char* data,int datalen);
+*/
 #define BUFFER_LEN  (1024*1024 - 12)
 #define SHARED_BUFFER_LEN (BUFFER_LEN + 12)
 #define TRUE 1
 #define FALSE 0
-#pragma pack(push) 
-#pragma pack(4)
+#pragma pack(push) //保存对齐状态
+#pragma pack(4)//设定为4字节对齐
  typedef struct {
 	unsigned int readIndex;
 	unsigned int writeIndex;
@@ -30,6 +35,8 @@
 
 void* membuff;
 
+
+//返回共享内存的fd， 输入ID和buffer指针，创建内存
 int writerSetBuffer(int shareID, char** buffer)
 {
 	int shmid;
@@ -64,47 +71,52 @@ int readerGetBuffer(int shareID, char** buffer)
 	*buff = (circleBuffer*)membuff;
 	return shmid;
 }
-
+/*
+返回：
+0  读不出来了
+n  读了n个字节回来
+注意：读n个，可能返回n-x个，注意做判断
+*/
 int readBuffer(char* circleBuff, char* data,int datalen)
 {
 	circleBuffer* circleBuf =(circleBuffer*)circleBuff; 
 	unsigned int writeIndex = circleBuf->writeIndex;
-		unsigned int readIndex  = circleBuf->readIndex;
+	unsigned int readIndex  = circleBuf->readIndex;
 	int ret;
 	//printf("WriteIndex is %d readIndex is %d Del=%d\n",writeIndex, readIndex,datalen);
 	if (readIndex < writeIndex){								
-		if (readIndex + datalen < writeIndex){				
+		if (readIndex + datalen < writeIndex){					//------------r---l---w-------------
 			memcpy(data, circleBuf->buffer + readIndex, datalen);
-				circleBuf->readIndex += datalen;
+			circleBuf->readIndex += datalen;
 			ret = datalen;
-		}else{									
+		}else{													//------------r------w----l--------------
 			memcpy(data, circleBuf->buffer + readIndex, writeIndex - readIndex);
 			circleBuf->readIndex = writeIndex;
-circleBuf->allowWrite = TRUE;
-printf("no data...\n");
-ret = writeIndex - readIndex;
+			circleBuf->allowWrite = TRUE;
+			printf("no data...\n");
+			ret = writeIndex - readIndex;
 		}
 	}else if (readIndex > writeIndex){
-		if (readIndex + datalen < BUFFER_LEN){		
+		if (readIndex + datalen < BUFFER_LEN){					//----w----------------------r-----l----
 			memcpy(data, circleBuf->buffer + readIndex, datalen);
 			circleBuf->readIndex += datalen;
 			ret = datalen;
 		}else{													
-			if (readIndex + datalen - BUFFER_LEN < writeIndex){
+			if (readIndex + datalen - BUFFER_LEN < writeIndex){//---l----w------------------------r----
 				memcpy(data, circleBuf->buffer + readIndex, BUFFER_LEN - readIndex);
 				memcpy(data + BUFFER_LEN - readIndex, circleBuf->buffer, readIndex + datalen - BUFFER_LEN);		
 				circleBuf->readIndex = readIndex + datalen - BUFFER_LEN;
 				ret = datalen;
-			}else{											 
+			}else{											  //--w----l--------------------------r---
 				printf("no data...\n");			
-					circleBuf->allowWrite = TRUE;
-					memcpy(data, circleBuf->buffer + readIndex, BUFFER_LEN - readIndex);
+				circleBuf->allowWrite = TRUE;
+				memcpy(data, circleBuf->buffer + readIndex, BUFFER_LEN - readIndex);
 				memcpy(data + BUFFER_LEN - readIndex, circleBuf->buffer, writeIndex);
 				circleBuf->readIndex = writeIndex;
 				ret = writeIndex + BUFFER_LEN - readIndex;
 			}
 		}
-	}else{													
+	}else{													//-----------w==r--------------------------
 		circleBuf->allowWrite = TRUE;
 		ret = 0;
 	}
