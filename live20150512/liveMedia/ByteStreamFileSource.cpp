@@ -21,20 +21,36 @@ along with this library; if not, write to the Free Software Foundation, Inc.,
 #include "ByteStreamFileSource.hh"
 #include "InputFile.hh"
 #include "GroupsockHelper.hh"
-
+extern "C"{
+extern int writerSetBuffer(int shareID, char** buffer);
+extern int readerGetBuffer(int shareID, char** buffer);
+extern unsigned int writeBuffer(char* circleBuff, char* data,unsigned int length);
+extern int readBuffer(char* circleBuff, char* data,int datalen);
+extern void clearBuffer(char* circleBuff);
+}
 ////////// ByteStreamFileSource //////////
-
+char* buff1;
+int flag;
+int firstFlag;
 ByteStreamFileSource*
 ByteStreamFileSource::createNew(UsageEnvironment& env, char const* fileName,
 				unsigned preferredFrameSize,
 				unsigned playTimePerFrame) {
   FILE* fid = OpenInputFile(env, fileName);
   if (fid == NULL) return NULL;
-
+//zhouhua
+firstFlag = 1;
+if(strcmp("zhou.264",fileName) == 0){
+flag = 1;
+	readerGetBuffer(1342, &buff1);
+	printf("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+}else{
+flag = 0;
+}
   ByteStreamFileSource* newSource
     = new ByteStreamFileSource(env, fid, preferredFrameSize, playTimePerFrame);
   newSource->fFileSize = GetFileSize(fileName, fid);
-
+  
   return newSource;
 }
 
@@ -138,15 +154,26 @@ void ByteStreamFileSource::doReadFromFile() {
   fFrameSize = fread(fTo, 1, fMaxSize, fFid);
 #else
   if (fFidIsSeekable) {
-    fFrameSize = fread(fTo, 1, fMaxSize, fFid);
+	//zhouhua this	
+if(flag == 0){  
+	fFrameSize = fread(fTo, 1, fMaxSize, fFid);
+}else{
+	if(firstFlag == 1){
+		clearBuffer(buff1);
+		firstFlag = 0;
+	}
+	fFrameSize = readBuffer(buff1, (char*)fTo, fMaxSize);
+	printf("fFrameSize = %d\n", fFrameSize); 
+}
   } else {
     // For non-seekable files (e.g., pipes), call "read()" rather than "fread()", to ensure that the read doesn't block:
     fFrameSize = read(fileno(fFid), fTo, fMaxSize);
-  }
+ }
 #endif
   if (fFrameSize == 0) {
-    handleClosure();
-    return;
+//zhouhua must comment this two step!
+    //handleClosure();
+    //return;
   }
   fNumBytesToStream -= fFrameSize;
 
